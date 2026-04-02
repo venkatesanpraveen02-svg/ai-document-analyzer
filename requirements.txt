@@ -7,6 +7,6 @@ pytesseract==0.3.13
 Pillow>=10.0.0
 transformers==4.40.2
 torch==2.9.0
-spacy==3.7.4 --prefer-binary
+spacy==3.7.4
 sentencepiece==0.2.0
 accelerate==0.30.0
