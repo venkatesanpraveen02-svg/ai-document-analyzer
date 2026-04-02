@@ -1,0 +1,11 @@
+venv/
+venv310/
+__pycache__/
+*.pyc
+.env
+uploads/
+*.log
+*.sqlite3
+*.bin
+*.pt
+*.pth

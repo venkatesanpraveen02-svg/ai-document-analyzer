@@ -1,0 +1,523 @@
+import os
+import sys
+import base64
+import re
+
+# OCR + entity cleanup helpers live below
+import subprocess
+import socket
+from pathlib import Path
+
+from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from dotenv import load_dotenv
+
+# --------------------------------------------------
+# Environment
+# --------------------------------------------------
+load_dotenv()
+API_KEY = os.getenv("API_KEY", "").strip()   # empty = open/demo mode
+
+# --------------------------------------------------
+# AI Model singletons  (loaded once on first use)
+# --------------------------------------------------
+_summarizer         = None
+_sentiment_pipeline = None
+_nlp                = None
+
+
+def get_summarizer():
+    global _summarizer
+    if _summarizer is None:
+        from transformers import pipeline
+        print("[INIT] Loading BART summarization model...", flush=True)
+        _summarizer = pipeline(
+            "summarization",
+            model="facebook/bart-large-cnn",
+            device=-1,
+        )
+        print("[INIT] BART model ready. OK", flush=True)
+    return _summarizer
+
+
+def get_sentiment():
+    global _sentiment_pipeline
+    if _sentiment_pipeline is None:
+        from transformers import pipeline
+        print("[INIT] Loading distilBERT sentiment model...", flush=True)
+        _sentiment_pipeline = pipeline(
+            "sentiment-analysis",
+            model="distilbert-base-uncased-finetuned-sst-2-english",
+            device=-1,
+        )
+        print("[INIT] distilBERT model ready. OK", flush=True)
+    return _sentiment_pipeline
+
+
+def get_nlp():
+    global _nlp
+    if _nlp is None:
+        import spacy
+        print("[INIT] Loading spaCy en_core_web_sm...", flush=True)
+        try:
+            _nlp = spacy.load("en_core_web_sm")
+        except OSError:
+            print("[INIT] en_core_web_sm not found. Downloading now...", flush=True)
+            try:
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install",
+                     "https://github.com/explosion/spacy-models/releases/download/"
+                     "en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl"],
+                    check=True, capture_output=True,
+                )
+                _nlp = spacy.load("en_core_web_sm")
+            except Exception as exc:
+                print(f"[INIT] spaCy download failed: {exc}. NER will be skipped.", flush=True)
+                _nlp = None
+        if _nlp:
+            print("[INIT] spaCy ready. OK", flush=True)
+    return _nlp
+
+
+# --------------------------------------------------
+# FastAPI app
+# --------------------------------------------------
+app = FastAPI(title="AI Document Analyzer", version="2.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+
+MAX_TEXT_CHARS  = 3000
+SUMMARY_MAX_LEN = 150
+SUMMARY_MIN_LEN = 40
+
+
+# --------------------------------------------------
+# Startup  -- pre-warm spaCy (fast; avoids first-request lag)
+# --------------------------------------------------
+@app.on_event("startup")
+def on_startup():
+    print("\n" + "="*50, flush=True)
+    print("  AI Document Analyzer  v2.0.0", flush=True)
+    print("  Auth mode: " + ("KEY REQUIRED" if API_KEY else "OPEN (demo)"), flush=True)
+    print("="*50, flush=True)
+    get_nlp()   # spaCy is tiny -- pre-warm it now
+    print("[READY] Server started successfully.\n", flush=True)
+
+
+# --------------------------------------------------
+# Pydantic schemas
+# --------------------------------------------------
+class DocumentRequest(BaseModel):
+    fileName:   str
+    fileType:   str        # "pdf" | "docx" | "image"
+    fileBase64: str
+
+
+class EntitiesOut(BaseModel):
+    names:         list[str]
+    dates:         list[str]
+    organizations: list[str]
+    locations:     list[str]
+    amounts:       list[str]
+
+
+class AnalysisResponse(BaseModel):
+    status:    str
+    fileName:  str
+    summary:   str
+    entities:  EntitiesOut
+    sentiment: str
+
+
+# --------------------------------------------------
+# Text extraction helpers
+# --------------------------------------------------
+def extract_pdf(path: str) -> str:
+    import pdfplumber
+    text = ""
+    with pdfplumber.open(path) as pdf:
+        for page in pdf.pages:
+            t = page.extract_text()
+            if t:
+                text += t + "\n"
+    return text.strip()
+
+
+def extract_docx(path: str) -> str:
+    from docx import Document
+    doc = Document(path)
+    return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+
+
+def extract_image(path: str) -> str:
+    import pytesseract
+    from PIL import Image
+    pytesseract.pytesseract.tesseract_cmd = os.getenv(
+        "TESSERACT_CMD",
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    )
+    text = pytesseract.image_to_string(Image.open(path)).strip()
+    return text or "[OCR returned no readable text]"
+
+def extract_text_from_image(file_bytes):
+    import pytesseract
+    from PIL import Image, ImageEnhance
+    import io
+    try:
+        import numpy as np
+    except Exception:
+        np = None
+
+    try:
+        import cv2
+    except Exception:
+        cv2 = None
+
+    # FORCE PATH
+    import os
+    tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    print(f"[OCR] Using tesseract_cmd: {tesseract_cmd}", flush=True)
+    print(f"[OCR] tesseract.exe exists: {os.path.exists(tesseract_cmd)}", flush=True)
+    pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+
+    try:
+        print("\n[OCR] Starting image processing...", flush=True)
+
+        # Load image
+        image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+        print("[OCR] Image loaded", flush=True)
+
+        # -------- TEST TESSERACT --------
+        try:
+            version = pytesseract.get_tesseract_version()
+            print(f"[OCR] Tesseract version: {version}", flush=True)
+        except Exception as e:
+            print("[ERROR] Tesseract NOT working:", e, flush=True)
+            return "Tesseract not installed or path incorrect."
+
+        # -------- METHOD 1: SIMPLE OCR --------
+        text_simple = pytesseract.image_to_string(image)
+        print("[OCR] Simple OCR length:", len(text_simple), flush=True)
+
+        # -------- METHOD 2: GRAYSCALE --------
+        gray = image.convert("L")
+        text_gray = pytesseract.image_to_string(gray)
+        print("[OCR] Gray OCR length:", len(text_gray), flush=True)
+
+        # -------- METHOD 3: OPENCV --------
+        text_cv = ""
+        if cv2 is not None and np is not None:
+            img = np.array(image)
+            gray_cv = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+            thresh = cv2.adaptiveThreshold(
+                gray_cv, 255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY,
+                11, 2
+            )
+
+            thresh = cv2.resize(thresh, None, fx=2, fy=2)
+            text_cv = pytesseract.image_to_string(thresh)
+        else:
+            print("[OCR] OpenCV not available (cv2/numpy missing) - skipping method 3.", flush=True)
+
+        print("[OCR] OpenCV OCR length:", len(text_cv), flush=True)
+
+        # -------- METHOD 4: CONTRAST BOOST --------
+        enhancer = ImageEnhance.Contrast(image)
+        enhanced = enhancer.enhance(3.0)
+        text_enhanced = pytesseract.image_to_string(enhanced)
+        print("[OCR] Enhanced OCR length:", len(text_enhanced), flush=True)
+
+        # -------- PICK BEST --------
+        texts = [text_simple, text_gray, text_cv, text_enhanced]
+        best_text = max(texts, key=len).strip()
+
+        print("[OCR] BEST TEXT LENGTH:", len(best_text), flush=True)
+
+        if len(best_text) < 30:
+            print("[OCR] FAILED - TEXT TOO SHORT", flush=True)
+            return "Could not extract text from this document."
+
+        print("[OCR] SUCCESS", flush=True)
+        return best_text
+
+    except Exception as e:
+        print("[OCR ERROR]", e, flush=True)
+        return "Could not extract text from this document."
+
+
+# --------------------------------------------------
+# AI pipeline helpers (all wrapped in try/except)
+# --------------------------------------------------
+def generate_summary(text: str) -> str:
+    text = text[:MAX_TEXT_CHARS].strip()
+    if not text:
+        return "No text available to summarize."
+    if len(text.split()) < 30:
+        return text
+    try:
+        result = get_summarizer()(
+            text,
+            max_length=SUMMARY_MAX_LEN,
+            min_length=SUMMARY_MIN_LEN,
+            do_sample=False,
+            truncation=True,
+        )
+        return result[0]["summary_text"]
+    except Exception as exc:
+        print(f"[WARN] Summarizer failed: {exc}", flush=True)
+        return text[:400] + "..."
+
+
+def clean_text(text: str) -> str:
+    # 1. Split merged words (camel case / missing spaces)
+    text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text or "")
+
+    # 2. Fix missing spaces after punctuation
+    text = re.sub(r"([.,])([A-Za-z])", r"\1 \2", text)
+
+    # 3. Remove duplicate spaces
+    text = re.sub(r"\s+", " ", text)
+
+    # 4. Fix common OCR issues
+    text = text.replace("NYCArt", "NYC Art")
+    text = text.replace("NewYork", "New York")
+
+    return text.strip()
+
+
+def extract_entities(text: str) -> dict:
+    empty = dict(names=[], dates=[], organizations=[], locations=[], amounts=[])
+    nlp = get_nlp()
+    if not nlp:
+        return empty
+    try:
+        text = clean_text(text)
+        doc = nlp(text[:MAX_TEXT_CHARS])
+
+        entities: dict[str, set] = {
+            "names": set(),
+            "organizations": set(),
+            "dates": set(),
+            "locations": set(),
+            "amounts": set(),
+        }
+
+        for ent in doc.ents:
+            val = clean_text(ent.text)
+            val_lower = val.lower()
+
+            if len(val) < 3:
+                continue
+
+            # Remove only clear garbage.
+            if val_lower in ["annual"]:
+                continue
+
+            # Remove small numeric fragments.
+            if val.isdigit() and len(val) < 4:
+                continue
+
+            if ent.label_ == "PERSON":
+                entities["names"].add(val)
+            elif ent.label_ == "ORG":
+                entities["organizations"].add(val)
+            elif ent.label_ == "DATE":
+                entities["dates"].add(val)
+            elif ent.label_ in ["GPE", "LOC"]:
+                entities["locations"].add(val)
+            elif ent.label_ == "MONEY":
+                if any(char.isdigit() for char in val):
+                    entities["amounts"].add(val)
+
+        # FINAL MANUAL CLEANUP (HACKATHON SAFE)
+
+        cleaned = {
+            "names": [],
+            "organizations": [],
+            "dates": [],
+            "locations": [],
+            "amounts": []
+        }
+
+        # 👤 PERSON → only proper names (2 words max)
+        for n in entities["names"]:
+            if len(n.split()) <= 3 and n.istitle():
+                if "Adobe" not in n and "Creative" not in n:
+                    cleaned["names"].append(n)
+
+        # 🏢 ORG → remove long phrases
+        for o in entities["organizations"]:
+            if len(o.split()) <= 4:
+                if "Portfolio" not in o and "Campaign" not in o:
+                    cleaned["organizations"].append(o)
+
+        # 📍 LOCATION → remove garbage
+        for l in entities["locations"]:
+            if "Graduated" not in l:
+                cleaned["locations"].append(l)
+
+        # 📅 DATE → keep only useful
+        for d in entities["dates"]:
+            if any(char.isdigit() for char in d):
+                cleaned["dates"].append(d)
+
+        # 💰 AMOUNT → ignore small junk
+        for a in entities["amounts"]:
+            if len(a) > 3:
+                cleaned["amounts"].append(a)
+
+        return cleaned
+    except Exception as exc:
+        print(f"[WARN] Entity extraction failed: {exc}", flush=True)
+        return empty
+
+
+def analyze_sentiment(text: str) -> str:
+    text = text[:MAX_TEXT_CHARS].strip()
+    if not text:
+        return "Neutral"
+    try:
+        short = " ".join(text.split()[:300])
+        result = get_sentiment()(short, truncation=True)[0]
+        label = result["label"].upper()
+        if label == "POSITIVE":
+            return "Positive"
+        elif label == "NEGATIVE":
+            return "Negative"
+        return "Neutral"
+    except Exception as exc:
+        print(f"[WARN] Sentiment failed: {exc}", flush=True)
+        return "Neutral"
+
+
+# --------------------------------------------------
+# Endpoints
+# --------------------------------------------------
+@app.get("/")
+def root():
+    """Root endpoint -- confirms API is running."""
+    return {
+        "message": "AI Document Analyzer API is running",
+        "status":  "ok",
+        "version": "2.0.0",
+        "docs":    "/docs",
+    }
+
+
+@app.get("/health")
+def health():
+    return {
+        "status":          "ok",
+        "version":         "2.0.0",
+        "models_loaded":   _nlp is not None,
+        "api_key_required": bool(API_KEY),
+    }
+
+
+@app.post("/api/document-analyze", response_model=AnalysisResponse)
+def analyze_document(
+    request:   DocumentRequest,
+    x_api_key: str = Header(default=""),
+):
+    received_key = (x_api_key or "").strip()
+    print(f"\n[REQUEST] file={request.fileName!r}  type={request.fileType!r}", flush=True)
+    print(f"[AUTH]    key_recv={'(empty)' if not received_key else '***'}  "
+          f"configured={'YES' if API_KEY else 'NO'}", flush=True)
+
+    # Optional auth
+    if API_KEY and received_key != API_KEY:
+        print("[AUTH] REJECTED -- key mismatch.", flush=True)
+        raise HTTPException(status_code=401, detail="Unauthorized: invalid API key.")
+    print("[AUTH] Allowed. OK", flush=True)
+
+    # Validate file type
+    if request.fileType not in {"pdf", "docx", "image"}:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported fileType '{request.fileType}'. Use: pdf, docx, image."
+        )
+
+    # Decode base64
+    try:
+        file_bytes = base64.b64decode(request.fileBase64)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 content.")
+
+    safe_name = Path(request.fileName).name
+    file_path = UPLOAD_DIR / safe_name
+    file_path.write_bytes(file_bytes)
+
+    # Extract text (fail-safe)
+    text = ""
+    try:
+        if request.fileType == "pdf":
+            text = extract_pdf(str(file_path))
+        elif request.fileType == "docx":
+            text = extract_docx(str(file_path))
+        elif request.fileType == "image":
+            text = extract_text_from_image(file_bytes)
+    except Exception as exc:
+        print(f"[WARN] Text extraction failed: {exc}", flush=True)
+
+    print(f"[TEXT]    Extracted {len(text)} chars.", flush=True)
+
+    # Fail-safe: if no text, return graceful response
+    if not text:
+        print("[WARN] No text extracted -- returning graceful fallback.", flush=True)
+        return AnalysisResponse(
+            status="success",
+            fileName=safe_name,
+            summary="Could not extract text from this document.",
+            entities=EntitiesOut(names=[], dates=[], organizations=[],
+                                 locations=[], amounts=[]),
+            sentiment="Neutral",
+        )
+
+    # AI pipeline
+    print("[AI] Running summarizer...", flush=True)
+    summary = generate_summary(text)
+
+    print("[AI] Running entity extractor...", flush=True)
+    text = clean_text(text)
+    entities = extract_entities(text)
+
+    print("[AI] Running sentiment...", flush=True)
+    sentiment = analyze_sentiment(text)
+
+    print(f"[DONE] sentiment={sentiment!r}  summary_len={len(summary)}", flush=True)
+
+    return AnalysisResponse(
+        status="success",
+        fileName=safe_name,
+        summary=summary,
+        entities=EntitiesOut(**entities),
+        sentiment=sentiment,
+    )
+
+
+# --------------------------------------------------
+# Serve frontend static files (must come LAST)
+# --------------------------------------------------
+if FRONTEND_DIR.exists():
+    app.mount("/ui", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+
+    @app.get("/app", include_in_schema=False)
+    def serve_frontend():
+        return FileResponse(str(FRONTEND_DIR / "index.html"))

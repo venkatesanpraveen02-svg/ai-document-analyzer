@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Document Analyzer</title>
+  <meta name="description" content="Upload PDF, DOCX, or images and get instant AI-powered summaries, entity extraction, and sentiment analysis." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ░░ HEADER ░░ -->
+  <header class="site-header">
+    <div class="logo">
+      <span class="logo-icon">⚡</span>
+      <span class="logo-text">DocAnalyzer <span class="logo-ai">AI</span></span>
+    </div>
+    <nav class="header-nav">
+      <span class="nav-badge">Hackathon Edition</span>
+    </nav>
+  </header>
+
+  <!-- ░░ HERO ░░ -->
+  <section class="hero">
+    <h1 class="hero-title">Intelligent Document<br/><span class="gradient-text">Analysis Engine</span></h1>
+    <p class="hero-subtitle">Upload any document — get AI summaries, named entities, and sentiment in seconds.</p>
+  </section>
+
+  <!-- ░░ MAIN CONTENT ░░ -->
+  <main class="app-container">
+
+    <!-- Upload Card -->
+    <div class="card upload-card">
+      <div id="dropzone" class="dropzone">
+        <div class="dz-icon">📂</div>
+        <p class="dz-title">Drag &amp; Drop your file here</p>
+        <p class="dz-sub">PDF · DOCX · PNG · JPG · TIFF</p>
+        <label class="btn-upload" for="fileInput">Choose File</label>
+        <input type="file" id="fileInput" accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.tiff,.bmp" hidden />
+      </div>
+
+      <!-- File info pill -->
+      <div id="fileInfo" class="file-info hidden">
+        <span class="file-icon">📄</span>
+        <span id="fileName" class="file-name"></span>
+        <button id="clearFile" class="btn-clear" title="Remove file">✕</button>
+      </div>
+
+      <!-- API Key field -->
+      <div class="field-group">
+        <label for="apiKey" class="field-label">API Key <span class="optional">(optional)</span></label>
+        <input type="password" id="apiKey" class="field-input" placeholder="Leave blank if not set" />
+      </div>
+
+      <button id="analyzeBtn" class="btn-analyze" disabled>
+        <span id="btnLabel">Analyze Document</span>
+        <span id="btnSpinner" class="spinner hidden"></span>
+      </button>
+    </div>
+
+    <!-- Results Section -->
+    <section id="results" class="results hidden">
+
+      <!-- Sentiment Badge -->
+      <div class="result-row sentiment-row">
+        <div class="card sentiment-card">
+          <h2 class="card-title">Sentiment</h2>
+          <span id="sentimentBadge" class="sentiment-badge">—</span>
+        </div>
+      </div>
+
+      <!-- Summary Card -->
+      <div class="card summary-card">
+        <h2 class="card-title">
+          <span class="card-icon">📝</span> Summary
+        </h2>
+        <p id="summaryText" class="summary-text"></p>
+      </div>
+
+      <!-- Entities Card -->
+      <div class="card entities-card">
+        <h2 class="card-title">
+          <span class="card-icon">🔍</span> Extracted Entities
+        </h2>
+        <div class="entity-grid" id="entityGrid"></div>
+      </div>
+
+    </section>
+
+    <!-- Error Banner -->
+    <div id="errorBanner" class="error-banner hidden">
+      <span class="error-icon">⚠️</span>
+      <span id="errorMsg"></span>
+    </div>
+
+  </main>
+
+  <footer class="site-footer">
+    <p>Powered by BART · distilBERT · spaCy · pdfplumber · pytesseract</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
