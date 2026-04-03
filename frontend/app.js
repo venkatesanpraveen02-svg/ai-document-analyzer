@@ -93,6 +93,13 @@ async function runAnalysis() {
   results.classList.add("hidden");
 
   try {
+    // STEP 1: Wake backend
+    await fetch("https://ai-doc-analyzer-yr6n.onrender.com/health");
+
+    // STEP 2: Wait for backend to fully start
+    await new Promise(resolve => setTimeout(resolve, 20000));
+
+    // STEP 3: Send actual request
     const formData = new FormData();
     formData.append("file", selectedFile);
 
@@ -104,19 +111,16 @@ async function runAnalysis() {
       }
     );
 
-    const text = await response.text();
-    console.log("RAW RESPONSE:", text);
-
     if (!response.ok) {
       throw new Error("Server error: " + response.status);
     }
 
-    const data = JSON.parse(text);
+    const data = await response.json();
     renderResults(data);
 
   } catch (err) {
-    console.error("ACTUAL ERROR:", err);
-    showError("REAL ERROR: " + err.message);
+    console.error(err);
+    showError("Server is starting. Please click again after a few seconds.");
   } finally {
     setLoading(false);
   }
