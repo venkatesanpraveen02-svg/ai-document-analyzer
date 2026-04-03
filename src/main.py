@@ -46,8 +46,12 @@ def get_nlp():
 # --------------------------------------------------
 app = FastAPI(title="AI Document Analyzer", version="2.0.0")
 
-app.mount("/", StaticFiles(directory="src/static", html=True), name="static")
+app.mount("/static", StaticFiles(directory="src/static", html=True), name="static")
+from fastapi.responses import FileResponse
 
+@app.get("/", include_in_schema=False)
+def serve_frontend():
+    return FileResponse("src/static/index.html")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
