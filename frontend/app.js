@@ -1,5 +1,5 @@
 /* Frontend API target */
-const API_BASE = "https://ai-doc-analyzer-yr6n.onrender.com";
+const API_BASE = "https://ai-document-analyzer-hdwv2cbcs.vercel.app/";
 
 /* ══════════════════════════════════════════
    DOM REFS
