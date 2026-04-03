@@ -1,5 +1,5 @@
 /* Frontend API target */
-const API_BASE = "http://127.0.0.1:8003";
+const API_BASE = "https://ai-doc-analyzer-yr6n.onrender.com";
 
 /* ══════════════════════════════════════════
    DOM REFS
