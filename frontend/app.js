@@ -1,5 +1,5 @@
 /* Frontend API target */
-const API_BASE = "https://ai-document-analyzer-hdwv2cbcs.vercel.app/";
+const API_BASE = "https://ai-doc-analyzer-yr6n.onrender.com";
 
 /* ══════════════════════════════════════════
    DOM REFS
@@ -107,6 +107,7 @@ async function runAnalysis() {
 
     const response = await fetch(`${API_BASE}/api/document-analyze`, {
       method: "POST",
+      mode: "cors",
       body: formData
     });
 
