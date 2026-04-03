@@ -261,24 +261,23 @@ def extract_text_from_image(file_bytes):
 # --------------------------------------------------
 # AI pipeline helpers (all wrapped in try/except)
 # --------------------------------------------------
-def generate_summary(text: str) -> str:
-    text = text[:MAX_TEXT_CHARS].strip()
-    if not text:
-        return "No text available to summarize."
-    if len(text.split()) < 30:
-        return text
-    try:
-        result = get_summarizer()(
-            text,
-            max_length=SUMMARY_MAX_LEN,
-            min_length=SUMMARY_MIN_LEN,
-            do_sample=False,
-            truncation=True,
-        )
-        return result[0]["summary_text"]
-    except Exception as exc:
-        print(f"[WARN] Summarizer failed: {exc}", flush=True)
-        return text[:400] + "..."
+def generate_summary(text):
+    # Clean text
+    text = text.strip()
+
+    # LIMIT INPUT SIZE (very important fix)
+    if len(text) > 1500:
+        text = text[:1500]
+
+    # Generate summary
+    summary = summarizer(
+        text,
+        max_length=120,
+        min_length=40,
+        do_sample=False
+    )[0]["summary_text"]
+
+    return summary
 
 
 def clean_text(text: str) -> str:
