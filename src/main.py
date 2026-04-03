@@ -36,7 +36,7 @@ def get_summarizer():
         print("[INIT] Loading BART summarization model...", flush=True)
         _summarizer = pipeline(
             "summarization",
-            model="facebook/bart-large-cnn",
+            model="sshleifer/distilbart-cnn-6-6",
             device=-1,
         )
         print("[INIT] BART model ready. OK", flush=True)
@@ -266,21 +266,16 @@ def extract_text_from_image(file_bytes):
 # AI pipeline helpers (all wrapped in try/except)
 # --------------------------------------------------
 def generate_summary(text):
-    # Clean text
-    text = text.strip()
-
-    # LIMIT INPUT SIZE (very important fix)
-    if len(text) > 1500:
-        text = text[:1500]
-
-    # Generate summary
+    text = (text or "").strip()
+    summarizer = get_summarizer()
     summary = summarizer(
-        text,
+        text[:1000],
         max_length=120,
         min_length=40,
         do_sample=False
     )[0]["summary_text"]
-
+    if not summary:
+        summary = text[:200]
     return summary
 
 
