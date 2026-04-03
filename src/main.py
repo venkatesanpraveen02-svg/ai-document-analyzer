@@ -90,7 +90,7 @@ app = FastAPI(title="AI Document Analyzer", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://ai-document-analyzer-hdwv2cbcs.vercel.app"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -425,7 +425,7 @@ def health():
         "api_key_required": bool(API_KEY),
     }
 
-from fastapi import UploadFile, File
+from fastapi import Request, UploadFile, File
 
 @app.post("/api/document-analyze")
 async def analyze_document(
@@ -508,6 +508,10 @@ async def analyze_document(
         "entities": entities,
         "sentiment": sentiment
     }
+
+@app.options("/api/document-analyze")
+async def options_handler(request: Request):
+    return {}
 # --------------------------------------------------
 # Serve frontend static files (must come LAST)
 # --------------------------------------------------
