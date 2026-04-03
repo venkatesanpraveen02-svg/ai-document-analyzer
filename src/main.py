@@ -12,7 +12,6 @@ from pathlib import Path
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -87,6 +86,8 @@ def get_nlp():
 # FastAPI app
 # --------------------------------------------------
 app = FastAPI(title="AI Document Analyzer", version="2.0.0")
+
+app.mount("/", StaticFiles(directory="src/static", html=True), name="static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -408,11 +409,6 @@ def analyze_sentiment(text: str) -> str:
 # --------------------------------------------------
 # Endpoints
 # --------------------------------------------------
-@app.get("/", include_in_schema=False)
-def serve_frontend():
-    return FileResponse("src/static/index.html")
-
-
 @app.get("/health")
 def health():
     return {
@@ -524,7 +520,3 @@ async def proxy_analyze(file: UploadFile = File(...)):
 @app.options("/api/document-analyze")
 async def options_handler(request: Request):
     return {}
-# --------------------------------------------------
-# Serve frontend static files (must come LAST)
-# --------------------------------------------------
-app.mount("/", StaticFiles(directory="src/static", html=True), name="static")
