@@ -96,20 +96,7 @@ async function runAnalysis() {
     const formData = new FormData();
     formData.append("file", selectedFile);
 
-    async function fetchWithRetry(url, options, retries = 3) {
-      try {
-        const response = await fetch(url, options);
-        return response;
-      } catch (err) {
-        if (retries > 0) {
-          await new Promise(res => setTimeout(res, 5000));
-          return fetchWithRetry(url, options, retries - 1);
-        }
-        throw err;
-      }
-    }
-
-    const response = await fetchWithRetry(
+    const response = await fetch(
       "https://ai-doc-analyzer-yr6n.onrender.com/api/document-analyze",
       {
         method: "POST",
@@ -117,20 +104,23 @@ async function runAnalysis() {
       }
     );
 
+    const text = await response.text();
+    console.log("RAW RESPONSE:", text);
+
     if (!response.ok) {
       throw new Error("Server error: " + response.status);
     }
 
-    const data = await response.json();
+    const data = JSON.parse(text);
     renderResults(data);
+
   } catch (err) {
-    console.error(err);
-    showError("Server is waking up. Please try again in a few seconds.");
+    console.error("ACTUAL ERROR:", err);
+    showError("REAL ERROR: " + err.message);
   } finally {
     setLoading(false);
   }
 }
-
 
 /* ══════════════════════════════════════════
    RENDER
