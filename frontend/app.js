@@ -104,7 +104,7 @@ async function runAnalysis() {
     formData.append("file", selectedFile);
 
     const response = await fetch(
-      "https://ai-doc-analyzer-yr6n.onrender.com/api/document-analyze",
+      "https://ai-doc-analyzer-yr6n.onrender.com/proxy-analyze",
       {
         method: "POST",
         body: formData

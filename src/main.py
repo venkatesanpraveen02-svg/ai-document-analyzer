@@ -6,6 +6,7 @@ import re
 # OCR + entity cleanup helpers live below
 import subprocess
 import socket
+import requests
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
@@ -510,6 +511,21 @@ async def analyze_document(
         "entities": entities,
         "sentiment": sentiment
     }
+
+@app.post("/proxy-analyze")
+async def proxy_analyze(file: UploadFile = File(...)):
+    file_bytes = await file.read()
+
+    files = {
+        "file": (file.filename, file_bytes)
+    }
+
+    response = requests.post(
+        "http://localhost:10000/api/document-analyze",
+        files=files
+    )
+
+    return response.json()
 
 @app.options("/api/document-analyze")
 async def options_handler(request: Request):
