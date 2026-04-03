@@ -89,9 +89,11 @@ app = FastAPI(title="AI Document Analyzer", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://ai-document-analyzer-hdwv2cbcs.vercel.app"],
+    allow_origins=[
+        "https://ai-document-analyzer-hdwv2cbcs.vercel.app"
+    ],
     allow_credentials=False,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
