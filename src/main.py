@@ -430,7 +430,7 @@ from fastapi import UploadFile, File
 
 @app.post("/api/document-analyze")
 async def analyze_document(
-    file: UploadFile = File(...),
+    file: UploadFile = File(None),
     x_api_key: str = Header(default="")
 ):
     received_key = (x_api_key or "").strip()
@@ -439,6 +439,20 @@ async def analyze_document(
         raise HTTPException(status_code=401, detail="Unauthorized: invalid API key.")
 
     file_bytes = await file.read()
+    if file is None:
+    return {
+        "status": "success",
+        "fileName": "",
+        "summary": "No file received.",
+        "entities": {
+            "names": [],
+            "dates": [],
+            "organizations": [],
+            "locations": [],
+            "amounts": []
+        },
+        "sentiment": "Neutral"
+    }
     file_name = file.filename.lower()
 
     # Detect file type
