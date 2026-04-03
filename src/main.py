@@ -533,9 +533,4 @@ async def options_handler(request: Request):
 # --------------------------------------------------
 # Serve frontend static files (must come LAST)
 # --------------------------------------------------
-if FRONTEND_DIR.exists():
-    app.mount("/ui", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
-
-    @app.get("/app", include_in_schema=False)
-    def serve_frontend():
-        return FileResponse(str(FRONTEND_DIR / "index.html"))
+app.mount("/", StaticFiles(directory="src/static", html=True), name="static")

@@ -1,5 +1,5 @@
 /* Frontend API target */
-const API_BASE = "https://ai-doc-analyzer-yr6n.onrender.com";
+const API_BASE = "";
 
 /* ══════════════════════════════════════════
    DOM REFS
@@ -94,7 +94,7 @@ async function runAnalysis() {
 
   try {
     // STEP 1: Wake backend
-    await fetch("https://ai-doc-analyzer-yr6n.onrender.com/health");
+    await fetch("/health");
 
     // STEP 2: Wait for backend to fully start
     await new Promise(resolve => setTimeout(resolve, 20000));
@@ -104,7 +104,7 @@ async function runAnalysis() {
     formData.append("file", selectedFile);
 
     const response = await fetch(
-      "https://ai-doc-analyzer-yr6n.onrender.com/proxy-analyze",
+      "/api/document-analyze",
       {
         method: "POST",
         body: formData
