@@ -80,15 +80,6 @@ function getFileType(file) {
   return null;
 }
 
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload  = () => resolve(reader.result.split(",")[1]); // strip data:...;base64,
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 /* ══════════════════════════════════════════
    ANALYZE
 ══════════════════════════════════════════ */
@@ -105,22 +96,21 @@ async function runAnalysis() {
     const formData = new FormData();
     formData.append("file", selectedFile);
 
-    const response = await fetch(`${API_BASE}/api/document-analyze`, {
+    const response = await fetch("https://ai-doc-analyzer-yr6n.onrender.com/api/document-analyze", {
       method: "POST",
-      mode: "cors",
       body: formData
     });
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({ detail: response.statusText }));
-      throw new Error(err.detail || `Server error ${response.status}`);
+      throw new Error("Server error: " + response.status);
     }
 
     const data = await response.json();
     renderResults(data);
 
   } catch (err) {
-    showError(err.message || "Request failed");
+    console.error(err);
+    showError("Request failed: " + err.message);
   } finally {
     setLoading(false);
   }
