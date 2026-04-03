@@ -203,7 +203,7 @@ def extract_text_from_image(file_bytes):
             print(f"[OCR] Tesseract version: {version}", flush=True)
         except Exception as e:
             print("[ERROR] Tesseract NOT working:", e, flush=True)
-            return "Tesseract not installed or path incorrect."
+            return ""
 
         # -------- METHOD 1: SIMPLE OCR --------
         text_simple = pytesseract.image_to_string(image)
