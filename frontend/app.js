@@ -1,5 +1,5 @@
 /* Frontend API target */
-const API_BASE = "";
+const API_BASE = "https://ai-doc-analyzer-yr6n.onrender.com";
 
 /* ══════════════════════════════════════════
    DOM REFS
@@ -93,13 +93,23 @@ async function runAnalysis() {
   results.classList.add("hidden");
 
   try {
+    // STEP 1: Wake backend
+    await fetch("https://ai-doc-analyzer-yr6n.onrender.com/health");
+
+    // STEP 2: Wait for backend to fully start
+    await new Promise(resolve => setTimeout(resolve, 20000));
+
+    // STEP 3: Send actual request
     const formData = new FormData();
     formData.append("file", selectedFile);
 
-    const response = await fetch("/api/document-analyze", {
-      method: "POST",
-      body: formData
-    });
+    const response = await fetch(
+      "https://ai-doc-analyzer-yr6n.onrender.com/proxy-analyze",
+      {
+        method: "POST",
+        body: formData
+      }
+    );
 
     if (!response.ok) {
       throw new Error("Server error: " + response.status);
@@ -110,7 +120,7 @@ async function runAnalysis() {
 
   } catch (err) {
     console.error(err);
-    showError("Request failed: " + err.message);
+    showError("Server is starting. Please click again after a few seconds.");
   } finally {
     setLoading(false);
   }

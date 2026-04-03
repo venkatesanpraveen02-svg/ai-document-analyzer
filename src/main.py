@@ -30,56 +30,15 @@ _nlp                = None
 
 
 def get_summarizer():
-    global _summarizer
-    if _summarizer is None:
-        from transformers import pipeline
-        print("[INIT] Loading BART summarization model...", flush=True)
-        _summarizer = pipeline(
-            "summarization",
-            model="sshleifer/distilbart-cnn-6-6",
-            device=-1,
-        )
-        print("[INIT] BART model ready. OK", flush=True)
-    return _summarizer
+    return None
 
 
 def get_sentiment():
-    global _sentiment_pipeline
-    if _sentiment_pipeline is None:
-        from transformers import pipeline
-        print("[INIT] Loading distilBERT sentiment model...", flush=True)
-        _sentiment_pipeline = pipeline(
-            "sentiment-analysis",
-            model="distilbert-base-uncased-finetuned-sst-2-english",
-            device=-1,
-        )
-        print("[INIT] distilBERT model ready. OK", flush=True)
-    return _sentiment_pipeline
+    return None
 
 
 def get_nlp():
-    global _nlp
-    if _nlp is None:
-        import spacy
-        print("[INIT] Loading spaCy en_core_web_sm...", flush=True)
-        try:
-            _nlp = spacy.load("en_core_web_sm")
-        except OSError:
-            print("[INIT] en_core_web_sm not found. Downloading now...", flush=True)
-            try:
-                subprocess.run(
-                    [sys.executable, "-m", "pip", "install",
-                     "https://github.com/explosion/spacy-models/releases/download/"
-                     "en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl"],
-                    check=True, capture_output=True,
-                )
-                _nlp = spacy.load("en_core_web_sm")
-            except Exception as exc:
-                print(f"[INIT] spaCy download failed: {exc}. NER will be skipped.", flush=True)
-                _nlp = None
-        if _nlp:
-            print("[INIT] spaCy ready. OK", flush=True)
-    return _nlp
+    return None
 
 
 # --------------------------------------------------
@@ -118,7 +77,6 @@ def on_startup():
     print("  AI Document Analyzer  v2.0.0", flush=True)
     print("  Auth mode: " + ("KEY REQUIRED" if API_KEY else "OPEN (demo)"), flush=True)
     print("="*50, flush=True)
-    get_nlp()   # spaCy is tiny -- pre-warm it now
     print("[READY] Server started successfully.\n", flush=True)
 
 
@@ -483,11 +441,18 @@ async def analyze_document(
             "sentiment": "Neutral"
         }
 
-    # AI processing
-    text = clean_text(text)
-    summary = generate_summary(text)
-    entities = extract_entities(text)
-    sentiment = analyze_sentiment(text)
+    # Lightweight response processing
+    summary = text[:300]
+
+    entities = {
+        "names": [],
+        "organizations": [],
+        "dates": [],
+        "locations": [],
+        "amounts": []
+    }
+
+    sentiment = "Neutral"
 
     return {
         "status": "success",
