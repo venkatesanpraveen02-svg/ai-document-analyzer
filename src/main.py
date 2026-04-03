@@ -408,15 +408,9 @@ def analyze_sentiment(text: str) -> str:
 # --------------------------------------------------
 # Endpoints
 # --------------------------------------------------
-@app.get("/")
-def root():
-    """Root endpoint -- confirms API is running."""
-    return {
-        "message": "AI Document Analyzer API is running",
-        "status":  "ok",
-        "version": "2.0.0",
-        "docs":    "/docs",
-    }
+@app.get("/", include_in_schema=False)
+def serve_frontend():
+    return FileResponse("src/static/index.html")
 
 
 @app.get("/health")
