@@ -121,10 +121,6 @@ def on_startup():
 # --------------------------------------------------
 # Pydantic schemas
 # --------------------------------------------------
-class DocumentRequest(BaseModel):
-    fileName:   str
-    fileType:   str        # "pdf" | "docx" | "image"
-    fileBase64: str
 
 
 class EntitiesOut(BaseModel):
@@ -430,88 +426,75 @@ def health():
         "api_key_required": bool(API_KEY),
     }
 
+from fastapi import UploadFile, File
 
-@app.post("/api/document-analyze", response_model=AnalysisResponse)
-def analyze_document(
-    request:   DocumentRequest,
-    x_api_key: str = Header(default=""),
+@app.post("/api/document-analyze")
+async def analyze_document(
+    file: UploadFile = File(...),
+    x_api_key: str = Header(default="")
 ):
     received_key = (x_api_key or "").strip()
-    print(f"\n[REQUEST] file={request.fileName!r}  type={request.fileType!r}", flush=True)
-    print(f"[AUTH]    key_recv={'(empty)' if not received_key else '***'}  "
-          f"configured={'YES' if API_KEY else 'NO'}", flush=True)
 
-    # Optional auth
     if API_KEY and received_key != API_KEY:
-        print("[AUTH] REJECTED -- key mismatch.", flush=True)
         raise HTTPException(status_code=401, detail="Unauthorized: invalid API key.")
-    print("[AUTH] Allowed. OK", flush=True)
 
-    # Validate file type
-    if request.fileType not in {"pdf", "docx", "image"}:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported fileType '{request.fileType}'. Use: pdf, docx, image."
-        )
+    file_bytes = await file.read()
+    file_name = file.filename.lower()
 
-    # Decode base64
-    try:
-        file_bytes = base64.b64decode(request.fileBase64)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid base64 content.")
+    # Detect file type
+    if file_name.endswith(".pdf"):
+        file_type = "pdf"
+    elif file_name.endswith(".docx"):
+        file_type = "docx"
+    else:
+        file_type = "image"
 
-    safe_name = Path(request.fileName).name
-    file_path = UPLOAD_DIR / safe_name
-    file_path.write_bytes(file_bytes)
+    # Save file
+    file_path = UPLOAD_DIR / file_name
+    with open(file_path, "wb") as f:
+        f.write(file_bytes)
 
-    # Extract text (fail-safe)
+    # Extract text
     text = ""
     try:
-        if request.fileType == "pdf":
+        if file_type == "pdf":
             text = extract_pdf(str(file_path))
-        elif request.fileType == "docx":
+        elif file_type == "docx":
             text = extract_docx(str(file_path))
-        elif request.fileType == "image":
+        else:
             text = extract_text_from_image(file_bytes)
-    except Exception as exc:
-        print(f"[WARN] Text extraction failed: {exc}", flush=True)
+    except Exception as e:
+        print(f"[ERROR] extraction failed: {e}", flush=True)
 
-    print(f"[TEXT]    Extracted {len(text)} chars.", flush=True)
-
-    # Fail-safe: if no text, return graceful response
+    # Fail-safe
     if not text:
-        print("[WARN] No text extracted -- returning graceful fallback.", flush=True)
-        return AnalysisResponse(
-            status="success",
-            fileName=safe_name,
-            summary="Could not extract text from this document.",
-            entities=EntitiesOut(names=[], dates=[], organizations=[],
-                                 locations=[], amounts=[]),
-            sentiment="Neutral",
-        )
+        return {
+            "status": "success",
+            "fileName": file_name,
+            "summary": "Could not extract text from this document.",
+            "entities": {
+                "names": [],
+                "dates": [],
+                "organizations": [],
+                "locations": [],
+                "amounts": []
+            },
+            "sentiment": "Neutral"
+        }
 
-    # AI pipeline
-    print("[AI] Running summarizer...", flush=True)
-    summary = generate_summary(text)
-
-    print("[AI] Running entity extractor...", flush=True)
+    # AI processing
     text = clean_text(text)
+    summary = generate_summary(text)
     entities = extract_entities(text)
-
-    print("[AI] Running sentiment...", flush=True)
     sentiment = analyze_sentiment(text)
 
-    print(f"[DONE] sentiment={sentiment!r}  summary_len={len(summary)}", flush=True)
-
-    return AnalysisResponse(
-        status="success",
-        fileName=safe_name,
-        summary=summary,
-        entities=EntitiesOut(**entities),
-        sentiment=sentiment,
-    )
-
-
+    return {
+        "status": "success",
+        "fileName": file_name,
+        "summary": summary,
+        "entities": entities,
+        "sentiment": sentiment
+    }
 # --------------------------------------------------
 # Serve frontend static files (must come LAST)
 # --------------------------------------------------
