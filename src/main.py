@@ -440,19 +440,19 @@ async def analyze_document(
 
     file_bytes = await file.read()
     if file is None:
-    return {
-        "status": "success",
-        "fileName": "",
-        "summary": "No file received.",
-        "entities": {
-            "names": [],
-            "dates": [],
-            "organizations": [],
-            "locations": [],
-            "amounts": []
-        },
-        "sentiment": "Neutral"
-    }
+        return {
+            "status": "success",
+            "fileName": "",
+            "summary": "No file received.",
+            "entities": {
+                "names": [],
+                "dates": [],
+                "organizations": [],
+                "locations": [],
+                "amounts": []
+            },
+            "sentiment": "Neutral"
+        }
     file_name = file.filename.lower()
 
     # Detect file type
