@@ -442,7 +442,7 @@ async def analyze_document(
     if file is None:
         return {
             "status": "success",
-            "fileName": "",
+            "fileName": "unknown",
             "summary": "No file received.",
             "entities": {
                 "names": [],
