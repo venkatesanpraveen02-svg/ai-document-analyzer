@@ -438,10 +438,8 @@ async def analyze_document(
     if API_KEY and received_key != API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized: invalid API key.")
 
-    file_bytes = await file.read()
     if file is None:
         return {
-            "status": "success",
             "fileName": "unknown",
             "summary": "No file received.",
             "entities": {
@@ -453,6 +451,8 @@ async def analyze_document(
             },
             "sentiment": "Neutral"
         }
+
+    file_bytes = await file.read()
     file_name = file.filename.lower()
 
     # Detect file type
