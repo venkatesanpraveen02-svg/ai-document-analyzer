@@ -96,10 +96,26 @@ async function runAnalysis() {
     const formData = new FormData();
     formData.append("file", selectedFile);
 
-    const response = await fetch("https://ai-doc-analyzer-yr6n.onrender.com/api/document-analyze", {
-      method: "POST",
-      body: formData
-    });
+    async function fetchWithRetry(url, options, retries = 3) {
+      try {
+        const response = await fetch(url, options);
+        return response;
+      } catch (err) {
+        if (retries > 0) {
+          await new Promise(res => setTimeout(res, 5000));
+          return fetchWithRetry(url, options, retries - 1);
+        }
+        throw err;
+      }
+    }
+
+    const response = await fetchWithRetry(
+      "https://ai-doc-analyzer-yr6n.onrender.com/api/document-analyze",
+      {
+        method: "POST",
+        body: formData
+      }
+    );
 
     if (!response.ok) {
       throw new Error("Server error: " + response.status);
@@ -107,10 +123,9 @@ async function runAnalysis() {
 
     const data = await response.json();
     renderResults(data);
-
   } catch (err) {
     console.error(err);
-    showError("Request failed: " + err.message);
+    showError("Server is waking up. Please try again in a few seconds.");
   } finally {
     setLoading(false);
   }
