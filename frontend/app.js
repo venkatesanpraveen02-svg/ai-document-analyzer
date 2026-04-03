@@ -97,12 +97,6 @@ analyzeBtn.addEventListener("click", runAnalysis);
 async function runAnalysis() {
   if (!selectedFile) return;
 
-  const fileType = getFileType(selectedFile);
-  if (!fileType) {
-    showError("Unsupported file type. Please upload a PDF, DOCX, or image.");
-    return;
-  }
-
   setLoading(true);
   hideError();
   results.classList.add("hidden");
@@ -110,33 +104,27 @@ async function runAnalysis() {
   try {
     const formData = new FormData();
     formData.append("file", selectedFile);
-  
+
     const response = await fetch(`${API_BASE}/api/document-analyze`, {
       method: "POST",
-      headers: {
-        "x-api-key": apiKeyInput.value || "test"
-      },
       body: formData
     });
-  
+
     if (!response.ok) {
       const err = await response.json().catch(() => ({ detail: response.statusText }));
       throw new Error(err.detail || `Server error ${response.status}`);
     }
-  
+
     const data = await response.json();
     renderResults(data);
-  
+
   } catch (err) {
-    if (err instanceof TypeError) {
-      showError("Failed to connect to server. Please check if backend is running.");
-    } else {
-      showError(err.message || "An unexpected error occurred.");
-    }
+    showError(err.message || "Request failed");
   } finally {
     setLoading(false);
   }
 }
+
 
 /* ══════════════════════════════════════════
    RENDER
