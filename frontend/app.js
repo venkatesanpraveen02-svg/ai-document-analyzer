@@ -108,30 +108,25 @@ async function runAnalysis() {
   results.classList.add("hidden");
 
   try {
-    const fileBase64 = await fileToBase64(selectedFile);
-    const payload = {
-      fileName: selectedFile.name,
-      fileType,
-      fileBase64,
-    };
-
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+  
     const response = await fetch(`${API_BASE}/api/document-analyze`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": ""
+        "x-api-key": apiKeyInput.value || "test"
       },
-      body: JSON.stringify(payload)
+      body: formData
     });
-
+  
     if (!response.ok) {
       const err = await response.json().catch(() => ({ detail: response.statusText }));
       throw new Error(err.detail || `Server error ${response.status}`);
     }
-
+  
     const data = await response.json();
     renderResults(data);
-
+  
   } catch (err) {
     if (err instanceof TypeError) {
       showError("Failed to connect to server. Please check if backend is running.");
