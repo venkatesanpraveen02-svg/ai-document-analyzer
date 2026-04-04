@@ -275,7 +275,7 @@ async def analyze_document(
         return {
             "status": "success",
             "fileName": file_name,
-            "summary": "Could not extract text from this document.",
+            "summary": "Image text extraction not supported in deployed version.",
             "entities": {
                 "names": [],
                 "dates": [],
@@ -287,18 +287,22 @@ async def analyze_document(
         }
 
     # Lightweight response processing
-    sentences = text.split(".")
-    summary = ". ".join(sentences[:3]).strip()
+    sentences = [s.strip() for s in text.split(".") if len(s.strip()) > 20]
+    summary = ". ".join(sentences[:3])
 
     import re
 
-    names = re.findall(r'\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b', text)
-    dates = re.findall(r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b', text)
-    amounts = re.findall(r'\$\d+(?:,\d+)*(?:\.\d+)?', text)
+    organizations = re.findall(r'\b(?:Google|Microsoft|NVIDIA|Amazon|Meta|OpenAI)\b', text)
+
+    names = re.findall(r'\b[A-Z][a-z]+\s[A-Z][a-z]+\b', text)
+
+    dates = re.findall(r'\b\d{4}\b', text)
+
+    amounts = re.findall(r'$\d+(?:,\d+)*(?:.\d+)?', text)
 
     entities = {
         "names": list(set(names))[:5],
-        "organizations": [],
+        "organizations": list(set(organizations)),
         "dates": list(set(dates)),
         "locations": [],
         "amounts": list(set(amounts))
