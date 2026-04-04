@@ -22,26 +22,6 @@ load_dotenv()
 API_KEY = os.getenv("API_KEY", "").strip()   # empty = open/demo mode
 
 # --------------------------------------------------
-# AI Model singletons  (loaded once on first use)
-# --------------------------------------------------
-_summarizer         = None
-_sentiment_pipeline = None
-_nlp                = None
-
-
-def get_summarizer():
-    return None
-
-
-def get_sentiment():
-    return None
-
-
-def get_nlp():
-    return None
-
-
-# --------------------------------------------------
 # FastAPI app
 # --------------------------------------------------
 app = FastAPI(title="AI Document Analyzer", version="2.0.0")
@@ -73,7 +53,7 @@ SUMMARY_MIN_LEN = 40
 
 
 # --------------------------------------------------
-# Startup  -- pre-warm spaCy (fast; avoids first-request lag)
+# Startup
 # --------------------------------------------------
 @app.on_event("startup")
 def on_startup():
@@ -225,145 +205,6 @@ def extract_text_from_image(file_bytes):
 
 
 # --------------------------------------------------
-# AI pipeline helpers (all wrapped in try/except)
-# --------------------------------------------------
-def generate_summary(text):
-    text = (text or "").strip()
-    summarizer = get_summarizer()
-    summary = summarizer(
-        text[:1000],
-        max_length=120,
-        min_length=40,
-        do_sample=False
-    )[0]["summary_text"]
-    if not summary:
-        summary = text[:200]
-    return summary
-
-
-def clean_text(text: str) -> str:
-    # 1. Split merged words (camel case / missing spaces)
-    text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text or "")
-
-    # 2. Fix missing spaces after punctuation
-    text = re.sub(r"([.,])([A-Za-z])", r"\1 \2", text)
-
-    # 3. Remove duplicate spaces
-    text = re.sub(r"\s+", " ", text)
-
-    # 4. Fix common OCR issues
-    text = text.replace("NYCArt", "NYC Art")
-    text = text.replace("NewYork", "New York")
-
-    return text.strip()
-
-
-def extract_entities(text: str) -> dict:
-    empty = dict(names=[], dates=[], organizations=[], locations=[], amounts=[])
-    nlp = get_nlp()
-    if not nlp:
-        return empty
-    try:
-        text = clean_text(text)
-        doc = nlp(text[:MAX_TEXT_CHARS])
-
-        entities: dict[str, set] = {
-            "names": set(),
-            "organizations": set(),
-            "dates": set(),
-            "locations": set(),
-            "amounts": set(),
-        }
-
-        for ent in doc.ents:
-            val = clean_text(ent.text)
-            val_lower = val.lower()
-
-            if len(val) < 3:
-                continue
-
-            # Remove only clear garbage.
-            if val_lower in ["annual"]:
-                continue
-
-            # Remove small numeric fragments.
-            if val.isdigit() and len(val) < 4:
-                continue
-
-            if ent.label_ == "PERSON":
-                entities["names"].add(val)
-            elif ent.label_ == "ORG":
-                entities["organizations"].add(val)
-            elif ent.label_ == "DATE":
-                entities["dates"].add(val)
-            elif ent.label_ in ["GPE", "LOC"]:
-                entities["locations"].add(val)
-            elif ent.label_ == "MONEY":
-                if any(char.isdigit() for char in val):
-                    entities["amounts"].add(val)
-
-        # FINAL MANUAL CLEANUP (HACKATHON SAFE)
-
-        cleaned = {
-            "names": [],
-            "organizations": [],
-            "dates": [],
-            "locations": [],
-            "amounts": []
-        }
-
-        # 👤 PERSON → only proper names (2 words max)
-        for n in entities["names"]:
-            if len(n.split()) <= 3 and n.istitle():
-                if "Adobe" not in n and "Creative" not in n:
-                    cleaned["names"].append(n)
-
-        # 🏢 ORG → remove long phrases
-        for o in entities["organizations"]:
-            if len(o.split()) <= 4:
-                if "Portfolio" not in o and "Campaign" not in o:
-                    cleaned["organizations"].append(o)
-
-        # 📍 LOCATION → remove garbage
-        for l in entities["locations"]:
-            if "Graduated" not in l:
-                cleaned["locations"].append(l)
-
-        # 📅 DATE → keep only useful
-        for d in entities["dates"]:
-            if any(char.isdigit() for char in d):
-                cleaned["dates"].append(d)
-
-        # 💰 AMOUNT → ignore small junk
-        for a in entities["amounts"]:
-            if len(a) > 3:
-                cleaned["amounts"].append(a)
-
-        return cleaned
-    except Exception as exc:
-        print(f"[WARN] Entity extraction failed: {exc}", flush=True)
-        return empty
-
-
-def analyze_sentiment(text: str) -> str:
-    text = text[:MAX_TEXT_CHARS].strip()
-    if not text:
-        return "Neutral"
-    try:
-        short = " ".join(text.split()[:300])
-        result = get_sentiment()(short, truncation=True)[0]
-        label = result["label"].upper()
-        if label == "POSITIVE":
-            return "Positive"
-        elif label == "NEGATIVE":
-            return "Negative"
-        return "Neutral"
-    except Exception as exc:
-        print(f"[WARN] Sentiment failed: {exc}", flush=True)
-        return "Neutral"
-
-
-# --------------------------------------------------
 # Endpoints
 # --------------------------------------------------
 @app.get("/health")
@@ -371,7 +212,7 @@ def health():
     return {
         "status":          "ok",
         "version":         "2.0.0",
-        "models_loaded":   _nlp is not None,
+        "models_loaded":   False,
         "api_key_required": bool(API_KEY),
     }
 
