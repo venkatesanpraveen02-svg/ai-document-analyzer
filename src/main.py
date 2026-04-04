@@ -287,14 +287,21 @@ async def analyze_document(
         }
 
     # Lightweight response processing
-    summary = text[:300]
+    sentences = text.split(".")
+    summary = ". ".join(sentences[:3]).strip()
+
+    import re
+
+    names = re.findall(r'\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b', text)
+    dates = re.findall(r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b', text)
+    amounts = re.findall(r'\$\d+(?:,\d+)*(?:\.\d+)?', text)
 
     entities = {
-        "names": [],
+        "names": list(set(names))[:5],
         "organizations": [],
-        "dates": [],
+        "dates": list(set(dates)),
         "locations": [],
-        "amounts": []
+        "amounts": list(set(amounts))
     }
 
     sentiment = "Neutral"
